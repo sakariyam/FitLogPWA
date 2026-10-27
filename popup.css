@@ -83,7 +83,12 @@ h2, p, label { overflow-wrap: anywhere; }
 .xp-text { margin-top: 5px; font-size: 12px; color: var(--bar-dim); }
 
 /* Forms */
-.meta { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-bottom: 12px; }
+.meta { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; margin-bottom: 12px; }
+.meta input { min-width: 0; max-width: 100%; }
+.meta input[type="date"] { appearance: none; -webkit-appearance: none; }
+@media (max-width: 600px) {
+  .meta { grid-template-columns: minmax(0, 1fr); }
+}
 label.field, .field { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 input { font-size: 16px; min-height: 44px; font-weight: 700; color: var(--dark); background: var(--mid); border: 3px solid var(--dark); border-radius: 0; padding: 6px 8px; width: 100%; }
 input::placeholder { color: var(--muted); opacity: 0.7; }
