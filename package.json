@@ -1,0 +1,5 @@
+{
+  "name": "fitlog",
+  "private": true,
+  "description": "FitLog: an iPhone-installable workout tracker with an RPG layer. No build, backend or dependencies."
+}
