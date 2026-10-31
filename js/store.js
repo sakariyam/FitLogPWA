@@ -21,7 +21,7 @@ function renderStore() {
     h('button', { class: 'btn small', disabled: profile.gold < entry.price, onclick: () => buyBox(entry) }, `${entry.price} gold`))));
 
   const items = unequippedItems();
-  panel.append(h('div', { class: 'bag-count', text: 'Sell gear from your bag' }));
+  panel.append(h('div', { class: 'bag-count', text: 'Sell unequipped items' }));
   if (!items.length) panel.append(h('div', { class: 'empty', text: 'Nothing to sell.' }));
   items.forEach((item) => {
     const price = SELL_PRICE[rarityIndex(item)];

@@ -21,7 +21,7 @@ function renderHistory() {
     const del = h('button', { class: 'btn small danger', onclick: () => {
       if (!del.classList.contains('armed')) { del.classList.add('armed'); del.textContent = 'Confirm delete'; return; }
       workouts = workouts.filter((x) => x.id !== w.id);
-      persistWorkouts(); refreshExerciseList(); renderHistory(); toast('Workout deleted');
+      persistWorkouts(); renderHistory(); toast('Workout deleted');
     } }, 'Delete');
 
     panel.append(h('details', { class: 'workout' },
@@ -33,7 +33,8 @@ function renderHistory() {
           km ? h('span', { text: `${fmtNum(km)} km` }) : null,
           !km && mins ? h('span', { text: `${fmt(mins)} min` }) : null,
           volume(w) ? h('span', { text: `${fmt(volume(w))} kg total` }) : null,
-          w.character ? h('span', { text: w.character }) : null)
+          w.character ? h('span', { text: w.character }) : null,
+          w.program ? h('span', { text: `${w.program.programName}: ${w.program.practice ? 'Practice' : w.program.finished ? 'Session finished' : 'Partial session'}` }) : null)
       ),
       h('div', { class: 'w-body' },
         w.exercises.map((e) => h('div', { class: 'w-ex' },
@@ -57,7 +58,7 @@ function repeatWorkout(w) {
     date: today(),
     name: w.name,
     exercises: w.exercises.map((e) => ({
-      name: e.name, type: e.type || 'strength', typeSet: true, km: e.km ?? '', minutes: e.minutes ?? '',
+      name: e.name, type: e.type || 'strength', km: e.km ?? '', minutes: e.minutes ?? '',
       sets: e.sets.length ? e.sets.map((s) => ({ reps: s.reps, kg: s.kg })) : [newSet()]
     }))
   };

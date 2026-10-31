@@ -5,14 +5,14 @@ How FitLog works inside. For step-by-step recipes see [content-guide.md](content
 ## Start-up
 
 ```
-popup.html loads js/*.js in order, app.js last
-  app.js: buildTabs()               creates every tab button and an empty panel from TAB_DEFS
-          load()                    reads chrome.storage.local, migrates older saves, loads account, workouts, draft and the active character
+index.html loads js/*.js in order, app.js last
+  app.js: buildTabs()               creates four bottom destinations, local navigation, the workout toolbar and panels from TAB_DEFS
+          load()                    reads IndexedDB, migrates older saves, loads account, workouts, draft and the active character
             no account, or not onboarded -> showAccountSetup()     onboarding step 1: name, weekly goal, theme
                  then: no characters -> showCreate(false, true)   onboarding step 2: first character
                        characters, one active -> startApp()
                        characters, none active -> showCharacterSelect()
-            has active character          -> startApp()            HUD + tab bars + Log tab
+            has active character          -> startApp()            compact HUD + bottom navigation + Home
             otherwise                     -> showCharacterSelect() (or the create screen if there are no characters)
 ```
 
@@ -22,34 +22,38 @@ The popup is a fresh page every time it opens, so every start reads storage agai
 
 FitLog has two layers, and each piece of state belongs to exactly one of them:
 
-| Layer | Owns | Why |
-|---|---|---|
+| Layer                         | Owns                                                                                       | Why                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | **Account** (one per install) | the workout log, the workout being typed, the weekly goal, account XP and level, the theme | The workouts are the real data. Stats and History should cover everything you ever logged, whichever character was active. |
-| **Character** (many) | class, avatar, XP and level, Strength/Agility levels, gold, gear, quests, cleared quests | The game layer. It reacts to workouts but never owns them. |
+| **Character** (many)          | class, XP and level, Strength/Agility levels, gold, gear, quests, cleared quests           | The game layer. It reacts to workouts but never owns them.                                                                 |
 
 The state lives in top-level variables in `state.js`:
 
-| Variable | Layer | Holds |
-|---|---|---|
-| `account` | account | `name, weeklyGoal, xp, onboarded, createdAt` |
-| `workouts` | account | The workout log, newest date first |
-| `draft` | account | The workout being typed on the Log tab (survives switching characters) |
-| `characters` | both | Every character, keyed by id (the whole save) |
-| `activeId` | | Id of the character being played, or `null` on the select screen |
-| `profile` | character | The active character: `id, name, classId, avatar, xp, stats, cleared, gold, masteredAt` |
-| `inventory`, `equipped`, `quests` | character | The active character's gear and quest runs |
-| `questView`, `theme`, `statsView`, ... | UI | Not saved per character (`theme` is saved globally) |
+| Variable                               | Layer     | Holds                                                                                    |
+| -------------------------------------- | --------- | ---------------------------------------------------------------------------------------- |
+| `account`                              | account   | `name, weeklyGoal, xp, onboarded, createdAt`                                             |
+| `workouts`                             | account   | The workout log, newest date first                                                       |
+| `customExercises`                      | account   | Player-created exercise definitions: name, type, main and supporting muscle groups       |
+| `programData`                          | account   | Custom program definitions, immutable run snapshots, completion events and active run ID |
+| `draft`                                | account   | The workout being typed on the Log tab (survives switching characters)                   |
+| `characters`                           | both      | Every character, keyed by id (the whole save)                                            |
+| `activeId`                             |           | Id of the character being played, or `null` on the select screen                         |
+| `profile`                              | character | The active character: `id, name, classId, xp, stats, cleared, gold, masteredAt`          |
+| `inventory`, `equipped`, `quests`      | character | The active character's gear and quest runs                                               |
+| `questView`, `theme`, `statsView`, ... | UI        | Not saved per character (`theme` is saved globally)                                      |
 
 Rule of thumb: if you are adding something a player would still want after deleting a character, it belongs to the account.
 
 **Saving.** Change the variables, then call the matching function from `storage.js`:
 
-| Function | Writes | Use after changing |
-|---|---|---|
-| `persist()` | the active character, plus the account | XP, gold, gear, quests |
-| `persistAccount()` | the account | name, weekly goal |
-| `persistWorkouts()` | the workout log | deleting or adding workouts |
-| `persistDraft()` | the draft | typing on the Log tab (called on every keystroke, so it is kept small on purpose) |
+| Function            | Writes                                 | Use after changing                                                                |
+| ------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
+| `persist()`         | the active character, plus the account | XP, gold, gear, quests                                                            |
+| `persistAccount()`  | the account                            | name, weekly goal                                                                 |
+| `persistWorkouts()` | the workout log                        | deleting or adding workouts                                                       |
+| `persistDraft()`    | the draft                              | typing on the Log tab (called on every keystroke, so it is kept small on purpose) |
+
+Exercise creation writes `customExercises` with `appStorage.set()` before updating the in-memory catalog. Missing custom definitions default to an empty list on load. `exerciseCatalog()` combines these definitions with `COMMON`, explicit preset `EXERCISE_TYPES`, and preset muscle/information data. New workout entries copy the definition's name and type; historical entries are not reclassified.
 
 ## Storage format
 
@@ -60,6 +64,8 @@ Everything is in `chrome.storage.local` (quota about 10 MB; add the `unlimitedSt
   "schema": 2,
   "account": { "name": "Sam", "weeklyGoal": 3, "xp": 1200, "onboarded": true, "createdAt": 1792944000000 },
   "workouts": [ /* the account's workout log, newest first */ ],
+  "customExercises": [ { "name": "Cable fly", "type": "strength", "main": ["chest"], "supporting": [] } ],
+  "programData": { "custom": [], "runs": [], "activeRunId": null },
   "draft": { "date": "2026-10-25", "name": "", "exercises": [ /* as typed */ ] },
   "characters": { "<uuid>": { /* character, below */ } },
   "activeId": "<uuid>" | null,
@@ -71,12 +77,21 @@ A workout (account level). `character` and `characterId` record who was playing;
 
 ```jsonc
 {
-  "id": 1792944395094, "date": "2026-10-25", "name": "",
-  "character": "Tanaka", "characterId": "<uuid>",
+  "id": 1792944395094,
+  "date": "2026-10-25",
+  "name": "",
+  "character": "Tanaka",
+  "characterId": "<uuid>",
   "exercises": [
-    { "name": "Squat",   "type": "strength", "sets": [{ "reps": 5, "kg": 80 }] },
-    { "name": "Running", "type": "agility",  "km": 2.5, "minutes": 0, "sets": [] }
-  ]
+    { "name": "Squat", "type": "strength", "sets": [{ "reps": 5, "kg": 80 }] },
+    {
+      "name": "Running",
+      "type": "agility",
+      "km": 2.5,
+      "minutes": 0,
+      "sets": [],
+    },
+  ],
 }
 ```
 
@@ -84,21 +99,47 @@ A character. It holds no workouts and no draft:
 
 ```jsonc
 {
-  "id": "<uuid>", "name": "Tanaka", "classId": "salaryman", "avatar": "salaryman_default",
-  "xp": 100,                                  // character XP, capped at MAX_XP
-  "stats": { "strength": 5, "agility": 50 },  // stat XP, capped at STAT_MAX_XP (levels are derived)
-  "cleared": { "s1": 1 },                     // quest id -> times cleared
+  "id": "<uuid>",
+  "name": "Tanaka",
+  "classId": "salaryman",
+  "xp": 100, // character XP, capped at MAX_XP
+  "stats": { "strength": 5, "agility": 50 }, // stat XP, capped at STAT_MAX_XP (levels are derived)
+  "cleared": { "s1": 1 }, // quest id -> times cleared
   "gold": 0,
-  "masteredAt": null,                         // timestamp of first reaching max level (the account bonus was paid then)
-  "inventory": [{
-    "id": "<uuid>", "slot": "feet", "look": "loafers", "rarity": "uncommon",
-    "name": "Office Loafers", "stats": { "strength": 1, "agility": 1 }
-  }],
-  "equipped": { "weapon": null, "head": null, "body": null, "neck": null, "feet": null },
+  "masteredAt": null, // timestamp of first reaching max level (the account bonus was paid then)
+  "inventory": [
+    {
+      "id": "<uuid>",
+      "slot": "feet",
+      "look": "loafers",
+      "rarity": "uncommon",
+      "name": "Office Loafers",
+      "stats": { "strength": 1, "agility": 1 },
+    },
+  ],
+  "equipped": {
+    "weapon": null,
+    "head": null,
+    "body": null,
+    "neck": null,
+    "feet": null,
+  },
   "quests": {
-    "strength": { "id": "s1", "stage": 0, "left": 20, "last": "10 damage to Stray Dog", "startedAt": 1792944394730 },
-    "agility":  { "id": "a1", "stage": 0, "left": 2.5, "last": "2.5 km", "startedAt": 1792944394878 }
-  }
+    "strength": {
+      "id": "s1",
+      "stage": 0,
+      "left": 20,
+      "last": "10 damage to Stray Dog",
+      "startedAt": 1792944394730,
+    },
+    "agility": {
+      "id": "a1",
+      "stage": 0,
+      "left": 2.5,
+      "last": "2.5 km",
+      "startedAt": 1792944394878,
+    },
+  },
 }
 ```
 
@@ -114,11 +155,11 @@ Notes:
 
 `migrateStore(raw)` in `storage.js` is a pure function that brings any older save up to the current `SCHEMA`. `load()` writes the result back and removes the legacy keys. It never touches a save that already has `schema: 2`.
 
-| Schema | Shape | What the migration does |
-|---|---|---|
-| 0 | One unnamed character as top-level keys (`profile`, `workouts`, `draft`, ...) | Becomes a character in the salaryman class; old gear and quest runs are dropped (`fromV0`) |
-| 1 | `characters` only; each character carried its own `workouts` and `draft` | `fromV1`: workouts of all characters are merged into one log (deduplicated by id, newest first, tagged with the character's name); the active character's draft becomes the account draft; an account is created (name from the active character, default goal, XP = the characters' XP plus the mastery bonus for any character already at max level) with `onboarded: false`, so the player sees the account screen once |
-| 2 | `schema`, `account`, `workouts`, `draft`, `characters`, `activeId`, `theme` | Current |
+| Schema | Shape                                                                         | What the migration does                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0      | One unnamed character as top-level keys (`profile`, `workouts`, `draft`, ...) | Becomes a character in the salaryman class; old gear and quest runs are dropped (`fromV0`)                                                                                                                                                                                                                                                                                                                                 |
+| 1      | `characters` only; each character carried its own `workouts` and `draft`      | `fromV1`: workouts of all characters are merged into one log (deduplicated by id, newest first, tagged with the character's name); the active character's draft becomes the account draft; an account is created (name from the active character, default goal, XP = the characters' XP plus the mastery bonus for any character already at max level) with `onboarded: false`, so the player sees the account screen once |
+| 2      | `schema`, `account`, `workouts`, `draft`, `characters`, `activeId`, `theme`   | Current                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 To change the format again: bump `SCHEMA`, add a `fromV2()` step, chain it in `migrateStore()`, and add a test that seeds the old shape (see `tests/e2e-account.js` if you have the tests folder).
 
@@ -127,12 +168,33 @@ To change the format again: bump `SCHEMA`, add a `fromV2()` step, chain it in `m
 There is no framework. Each tab has a `render<Name>()` function that clears its panel and rebuilds it with `h()`:
 
 ```js
-panel.replaceChildren(h('div', { class: 'card' }, h('div', { text: 'Hello' })));
+panel.replaceChildren(h("div", { class: "card" }, h("div", { text: "Hello" })));
 ```
 
 `h(tag, props, ...children)` (in `dom.js`): props starting with `on` become event listeners, `text` sets `textContent`, `false`/`null` props are skipped, other props become attributes, and children can be nested arrays or `null`. There is no HTML parsing anywhere, which is what makes user-entered names safe.
 
-`showTab(name)` shows the panel, calls `RENDERERS[name]()` and scrolls to the top. Re-render after state changes with the same function (`renderBag()` after equipping, and so on).
+`showTab(name)` shows the panel, calls `RENDERERS[name]()` and scrolls to the top. Re-render after state changes with the same function (`renderInventory()` after equipping, and so on).
+
+### Navigation
+
+`NAV_GROUPS` in `tabs.js` defines four persistent bottom destinations:
+
+- Home: `home`, with nested `more` and `settings` pages.
+- Progress: `stats`, `history`, with a local page switch.
+- Adventure: `quest`, `inventory`, `store`, with a local page switch.
+- Workout: `log`, `programs`, with a local switch and the filled action at the far right.
+
+`startApp()` opens Home. `renderHome()` displays a Start/Resume workout action without clearing the draft or changing a paused timer, this week's goal and volume/distance, the latest saved workout, active quests or a quest-selection shortcut, Inventory, and Settings & more. The weekly goal uses the same Monday-Sunday period helpers as Stats. Home uses the shared header portrait without duplicating the character preview in its content. Fresh installs have explicit empty states; unknown or obsolete quest references are skipped.
+
+When a program is active and there is no draft, Home offers its next session instead of a generic start action, with a separate Free workout command. The Programs screen contains the library, details, builder and saved campaign history. Adventure embeds `programCampaign()` alongside quests. The builder uses the same focused-screen layout as exercise creation.
+
+Home replaces More in the bottom bar, retaining four destinations in this order: Home, Progress, Adventure, Workout. The Home button always opens `home`, even after visiting its nested settings pages. More is still reachable from Home and contains account settings and character switching; its Back link returns Home. Settings returns to More. Home has no workout save toolbar or local subnavigation.
+
+`TAB_DEFS` retains the individual page IDs, so history repeats and gift-box return routes still call `showTab()` directly. Progress and Adventure remember their last page for the current session. `setTabBars()` retains its existing name but now controls the single bottom navigation. Character selection and onboarding hide all game navigation.
+
+The compact header prioritizes a tappable equipped-character portrait, character name, level and wide XP indicator. Tapping the portrait opens Inventory, where `characterEquipmentOverview()` shows the same artwork at a larger size beside compact Strength/Agility stat progress and gear bonuses. Character switching is available in More and Settings, not Inventory; there is no separate Character page.
+
+`setWorkoutFocus(true, title)` hides bottom navigation, the portrait shortcut and the workout timer/save toolbar during exercise selection and creation. Their Back actions return to the parent screen; `renderLog()` restores the normal navigation. The timer continues to use the same draft state while those controls are hidden. The workout toolbar is outside the scrolling `main` and appears only on the main Workout screen.
 
 The exception is the Log tab: re-rendering while someone types would drop focus, so `exerciseCard()` swaps only its own body (`renderBody()`), and typing handlers just write to `draft` and call `persist()`.
 
@@ -140,23 +202,23 @@ The exception is the Log tab: re-rendering while someone types would drop focus,
 
 `spriteFrom(rows, cssClass)` in `dom.js` turns 16 strings into an SVG with one `<rect>` per pixel. Characters map to CSS classes (`TONE_CLASS`): `#` is `.px-1` (`--dark`), `+` is `.px-2` (`--deep`), `s` is `.ch-skin` (`--skin`). Because fills are CSS variables, themes recolor sprites for free. `shape-rendering: crispEdges` plus whole-number sizes keep pixels sharp.
 
-The Gear tab headshot is `headshotRows()` in `gear.js`: copy the class's base headshot, then paint the look layer of each equipped body, neck and head item over it.
+The Inventory character preview is `headshotRows()` in `gear.js`: copy the class's base headshot, then paint the look layer of each equipped body, neck and head item over it. `renderInventory()` in `bag.js` combines that overview with equipped slot filters and all owned items, including equipped items, with equip/unequip and confirmed selling actions. Re-rendering after equipment changes refreshes both the character art and stat bonuses. Equipped items cannot be sold. Gift-box inventory and equip actions return to `inventory`.
 
 ### Theming
 
 All colors are CSS custom properties on `:root`, overridden by `[data-theme="..."]` blocks in `popup.css`. `applyTheme()` sets `data-theme` on `<html>`.
 
-| Token | Role | Game Boy | Night |
-|---|---|---|---|
-| `--light` | Page background | `#9bbc0f` | `#070914` |
-| `--mid` | Panels, inputs | `#8bac0f` | `#11152b` |
-| `--deep` | Shadows, `+` sprite fill, grid lines | `#306230` | `#7f88b0` |
-| `--dark` | Text, borders, `#` sprite outline | `#0f380f` | `#e6eaff` |
-| `--muted` | Secondary text | `#245024` | `#9aa3cc` |
-| `--bar-bg` / `--bar-fg` | Header, bottom bar, gold card, toast, banners | dark / light | `#0b0e20` / `#e6eaff` |
-| `--bar-dim` / `--bar-edge` | Dimmed text and outline on those bars | `#8bac0f` / dark | `#8d96c0` / `#6b739a` |
-| `--skin` | Skin pixels (`s`) | `#8bac0f` | `#7f88b0` |
-| `--scrim` | Dim layer behind the present dialog | translucent dark green | translucent near-black |
+| Token                      | Role                                          | Game Boy               | Night                  |
+| -------------------------- | --------------------------------------------- | ---------------------- | ---------------------- |
+| `--light`                  | Page background                               | `#9bbc0f`              | `#070914`              |
+| `--mid`                    | Panels, inputs                                | `#8bac0f`              | `#11152b`              |
+| `--deep`                   | Shadows, `+` sprite fill, grid lines          | `#306230`              | `#7f88b0`              |
+| `--dark`                   | Text, borders, `#` sprite outline             | `#0f380f`              | `#e6eaff`              |
+| `--muted`                  | Secondary text                                | `#245024`              | `#9aa3cc`              |
+| `--bar-bg` / `--bar-fg`    | Header, bottom bar, gold card, toast, banners | dark / light           | `#0b0e20` / `#e6eaff`  |
+| `--bar-dim` / `--bar-edge` | Dimmed text and outline on those bars         | `#8bac0f` / dark       | `#8d96c0` / `#6b739a`  |
+| `--skin`                   | Skin pixels (`s`)                             | `#8bac0f`              | `#7f88b0`              |
+| `--scrim`                  | Dim layer behind the present dialog           | translucent dark green | translucent near-black |
 
 ## Progression
 
@@ -166,13 +228,15 @@ All colors are CSS custom properties on `:root`, overridden by `[data-theme="...
   2. a one-off `ACCOUNT_XP_MASTERED` bonus the first time a character reaches max level (`masteredAt` records it, so it is paid once per character).
 
   Deleting a character does not remove the account XP it earned.
+
 - **Strength / Agility level** comes from cumulative thresholds `STAT_CUM`, built from a cost of `round(100 x 1.25^(level-1))` per level, which gets steeper by design:
 
-  | Level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-  |---|---|---|---|---|---|---|---|---|---|---|
-  | Stat XP needed | 0 | 100 | 225 | 381 | 576 | 820 | 1,125 | 1,506 | 1,983 | 2,579 |
+  | Level          | 1   | 2   | 3   | 4   | 5   | 6   | 7     | 8     | 9     | 10    |
+  | -------------- | --- | --- | --- | --- | --- | --- | ----- | ----- | ----- | ----- |
+  | Stat XP needed | 0   | 100 | 225 | 381 | 576 | 820 | 1,125 | 1,506 | 1,983 | 2,579 |
 
   Strength XP is 5 per logged set. Agility XP is 20 per km.
+
 - **Effective stat** = level + gear bonus (`effStat`). This is what quest requirements are compared against. The bonus is the sum of `stats` over equipped items (`gearBonus`). That is the whole point of gear: levels stop at the cap, requirements can go above it.
 
 ## Saving a workout
@@ -185,7 +249,17 @@ All colors are CSS custom properties on `:root`, overridden by `[data-theme="...
 4. `applyQuests()`: for each path that has an active quest, apply this workout's progress (below). A quest clear adds its `rewardXp` through `addXp()`.
 5. `addXp(XP_PER_WORKOUT)`: character XP (capped) and account XP (uncapped). Add the stat gains, each clamped at its cap. If the character has just reached max level for the first time, set `masteredAt` and add `ACCOUNT_XP_MASTERED` to the account.
 6. `rollLoot()` one item. The stat bias is whichever of strength/agility gained more XP. The minimum rarity is the highest `minRarity` of any quest cleared by this workout. The item goes into `inventory` immediately, so closing the popup never loses it.
-7. Save with `Promise.all([persist(), persistWorkouts(), persistDraft()])`, refresh the exercise-name suggestions, then `showPresent()` with the summary lines (XP, quest results, character level-up, mastery bonus, account level-up, stat gains).
+7. Save characters/account, workouts, draft and `programData` in one `appStorage.set()` transaction, then show the present with summary lines. `savingWorkout` prevents concurrent button submissions. A failed write restores the pre-save in-memory snapshot and keeps the draft.
+
+For planned sessions, skipped items and blank target rows are excluded. A Finish action with incomplete non-skipped targets asks for confirmation; Partial saves keep the same attempt/occurrence and a paused draft with already-logged values cleared. The next session advances only on deliberate completion, and stale occurrences, inactive runs and practice sessions cannot advance it. Completing a previously saved partial without new actual work updates program status but grants no second workout reward. See [programs.md](programs.md) for user-facing behavior.
+
+## Programs
+
+`programs.js` defines presets and pure-ish model helpers; `program-ui.js` contains the library, builder, scheduling, campaign view and logging controls. `programData` is an additive optional account-level key under the existing schema, defaulting to `emptyProgramData()` for old saves. Custom definitions contain `id`, `name`, `weeklyTarget`, `cycles`, and ordered sessions with stable exercise item IDs and targets.
+
+Runs snapshot the definition at follow/restart time and contain `completions`, an optional `nextDate` and `finishedAt`. Drafts snapshot the current session, occurrence, practice flag and unique attempt ID. Workout entries retain these references and planned item IDs. `programItemProgress()` combines actual saved portions and current inputs without treating targets as results. `completeProgramSession()` requires the active run, expected occurrence and session index, and rejects duplicate attempt IDs. Milestones derive from completed sessions/cycles and grant badges only. Editing a template does not mutate an existing run. Changing characters does not change the active account-level program.
+
+The next date is advisory; no date-based reset, missed-day penalty or daily streak is applied. Exercise progress links reuse existing actual-result Stats charts. Regression tests in `tools/programs.test.cjs` cover the model and real workout save path.
 
 ## Quests
 
@@ -217,32 +291,36 @@ Gift boxes in the store use the same function with a random bias.
 
 ## Stats tab
 
-`stats.js` works only from the account's `workouts` (so it always covers every character) and `account.weeklyGoal`; it needs no extra storage.
+`stats.js` builds progress from the account's `workouts` (so it always covers every character) and `account.weeklyGoal`; it needs no extra storage. Account-level banners are not displayed in Stats.
 
-- `buildSeries(metric, period)` buckets workouts into the last 12 weeks (Monday start) or months and sums a metric per bucket. Metrics are workouts, kg lifted (reps x kg) and distance.
+- `buildSeries(metric, period, count, endKey)` buckets workouts into 12 weeks (Monday start) or months and sums a metric per bucket. It ends at the current period by default, or at `endKey` when browsing older history. Metrics are workouts, kg lifted (reps x kg) and distance.
 - `exerciseList()` and `exerciseSessions(name)` group a single exercise by date: top weight, volume, km, minutes.
-- `lineChart(points, options)` draws an SVG (no library) with grid lines, a polyline, square markers and optional goal line. `axisFor()` picks the range and tick marks: counts and totals start at zero, exercise charts zoom to the data so slow progress is visible.
+- `lineChart(points, options)` draws an SVG (no library) with grid lines, a polyline, square markers and optional goal line. Overview passes `selectedKey` and `onSelect` to highlight the selected period and make chart columns selectable by touch/click or keyboard (Left/Right, Home/End, Enter/Space). Exercise charts remain read-only. `axisFor()` picks the range and tick marks: counts and totals start at zero, exercise charts zoom to the data so slow progress is visible.
+- Overview follows one period-first layout: Weekly/Monthly, previous/date/next navigation, selectable Workouts/Lifted/Distance totals, compact Exercises/Sets/Minutes, the trend chart, weekly muscles, and All-time totals at the bottom. The totals also select the chart metric, replacing the separate metric switch. Duplicate dates and totals are not repeated below the chart.
+- `statsSelectedPeriod` remembers separate week/month selections for the session. Tapping the date reveals a native period picker spanning at least 12 periods and extending back to the earliest workout. Future periods are disabled. `periodWorkouts()` uses inclusive starts and exclusive next-period boundaries. `updateStatsOverview()` refreshes the overview while preserving scroll and control focus; arrows, picker and chart update the same selection.
+- Weekly muscles use only that selected Monday-Sunday period, including preset/custom exercises. Empty weeks show zero totals and an unhighlighted map. Monthly retains period totals and chart interaction but does not show muscles. Older selections shift the 12-point trend window within the selectable history range.
+- `trainedMuscles(exercises)` in `state.js` is shared by the draft Summary and weekly Stats summary. It resolves preset/custom definitions, deduplicates targets, and excludes main targets from the supporting set. Muscle previews use the current exercise catalog; unknown historical names have no inferred muscle targets.
 
 ## Files you will touch most
 
-| To change... | Edit |
-|---|---|
-| Numbers, caps, prices, rarities | `config.js` |
-| Sprites | `art.js` (preview with `tools/sprite-preview.html`) |
-| Quests, gear names, class content | `classes.js` |
-| How progress is applied to quests | `quests.js` (`applyQuest`) |
-| What a workout awards | `workout.js` (`saveWorkout`) |
-| Account onboarding, account card, weekly goal | `account.js`, `settings.js` |
-| Save format and migrations | `storage.js` (`SCHEMA`, `migrateStore`) |
-| Loot generation | `loot.js` (`rollLoot`) |
-| Tabs and their order | `tabs.js`, `app.js`, `popup.html` |
-| Colors and layout | `popup.css` |
+| To change...                                  | Edit                                                |
+| --------------------------------------------- | --------------------------------------------------- |
+| Numbers, caps, prices, rarities               | `config.js`                                         |
+| Sprites                                       | `art.js` (preview with `tools/sprite-preview.html`) |
+| Quests, gear names, class content             | `classes.js`                                        |
+| How progress is applied to quests             | `quests.js` (`applyQuest`)                          |
+| What a workout awards                         | `workout.js` (`saveWorkout`)                        |
+| Account onboarding, account card, weekly goal | `account.js`, `settings.js`                         |
+| Save format and migrations                    | `storage.js` (`SCHEMA`, `migrateStore`)             |
+| Loot generation                               | `loot.js` (`rollLoot`)                              |
+| Tabs and their order                          | `tabs.js`, `app.js`, `popup.html`                   |
+| Colors and layout                             | `popup.css`                                         |
 
 ## Pitfalls
 
 - **A duplicated top-level name breaks the popup.** Two files declaring the same function or constant is a `SyntaxError` for the second file. Check the inspector console first when something is blank.
 - **MV3 content security policy.** No inline `<script>`, no `onclick="..."` attributes, no `eval`, no remote fonts, images or scripts.
-- **Changing saved ids.** Quest, class, avatar, look and slot ids live in users' saves. Add freely; do not rename or delete without a migration in `loadCharacter()`.
+- **Changing saved ids.** Quest, class, look and slot ids live in users' saves. Add freely; do not rename or delete without a migration in `loadCharacter()`.
 - **`minRarity` is an index**, not a rarity key.
 - **Account vs character.** Workouts, the draft and the weekly goal live on the account. Do not store them on a character, and do not make a feature depend on the active character's data if it should cover the whole account.
 - **Stale tests.** `e2e-game.js` expects exactly three disabled classes on the create screen; enabling a placeholder class will (correctly) fail it. Update the test with the change.

@@ -6,6 +6,7 @@ let statsMetric = 'workouts';
 let statsPeriod = 'week';
 let statsExercise = null;
 let statsExMetric = null;
+const statsSelectedPeriod = { week: null, month: null };
 
 const OVERVIEW_METRICS = {
   workouts: { label: 'Workouts', title: 'Workouts', unit: '', of: () => 1 },
@@ -23,8 +24,8 @@ function mondayOf(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDa
 const bucketStart = (d, period) => (period === 'week' ? mondayOf(d) : new Date(d.getFullYear(), d.getMonth(), 1));
 
 // One point per week (Monday start) or month, oldest first, ending with the current one.
-function buildSeries(metric, period, count = CHART_BUCKETS) {
-  const now = bucketStart(new Date(), period);
+function buildSeries(metric, period, count = CHART_BUCKETS, endKey = null) {
+  const now = bucketStart(endKey ? parseIso(endKey) : new Date(), period);
   const buckets = [];
   for (let i = count - 1; i >= 0; i--) {
     const date = period === 'week' ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7 * i) : new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -33,6 +34,7 @@ function buildSeries(metric, period, count = CHART_BUCKETS) {
   const byKey = new Map(buckets.map((b) => [b.key, b]));
   workouts.forEach((w) => { const b = byKey.get(isoOf(bucketStart(parseIso(w.date), period))); if (b) b.value += metric.of(w); });
   return buckets.map((b) => ({
+    key: b.key,
     label: b.date.toLocaleDateString(undefined, period === 'week' ? { day: 'numeric', month: 'short' } : { month: 'short' }),
     value: round2(b.value)
   }));
@@ -92,13 +94,13 @@ function axisFor(vals, { zero, whole, goal }) {
   return { lo, hi, ticks };
 }
 
-function lineChart(points, { unit = '', goal = null, whole = false, zero = true, label = 'Line chart' } = {}) {
+function lineChart(points, { unit = '', goal = null, whole = false, zero = true, label = 'Line chart', selectedKey = null, onSelect = null } = {}) {
   const W = 340, H = 170, L = 40, R = 12, T = 12, B = 26;
   const vals = points.map((p) => p.value);
   const { lo, hi, ticks } = axisFor(vals, { zero, whole, goal });
   const x = (i) => L + (points.length === 1 ? (W - L - R) / 2 : ((W - L - R) * i) / (points.length - 1));
   const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img',
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: onSelect ? 'group' : 'img',
     'aria-label': `${label}. Latest value ${shortNum(vals[vals.length - 1])}${unit ? ' ' + unit : ''}.` });
 
   ticks.forEach((v) => {
@@ -109,14 +111,36 @@ function lineChart(points, { unit = '', goal = null, whole = false, zero = true,
     svg.append(svgEl('line', { class: 'goal', x1: L, x2: W - R, y1: y(goal), y2: y(goal) }));
     svg.append(svgEl('text', { x: W - R, y: y(goal) - 3, 'text-anchor': 'end' }, 'goal'));
   }
+  const selectedIndex = points.findIndex((point) => point.key === selectedKey);
+  if (selectedIndex >= 0) svg.append(svgEl('line', { class: 'chart-selection', x1: x(selectedIndex), x2: x(selectedIndex), y1: T, y2: H - B }));
   svg.append(svgEl('polyline', { class: 'line', points: points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ') }));
   points.forEach((p, i) => svg.append(svgEl('rect', { class: 'dot', x: x(i) - 2, y: y(p.value) - 2, width: 4, height: 4 })));
+  if (selectedIndex >= 0) svg.append(svgEl('rect', { class: 'selected-dot', x: x(selectedIndex) - 4, y: y(points[selectedIndex].value) - 4, width: 8, height: 8 }));
 
   const last = points.length - 1;
   const marks = [[0, 'start']];
   if (last >= 4) marks.push([Math.round(last / 2), 'middle']);
   if (last >= 1) marks.push([last, 'end']);
   marks.forEach(([i, anchor]) => svg.append(svgEl('text', { x: x(i), y: H - 8, 'text-anchor': anchor }, points[i].label)));
+  if (onSelect) points.forEach((point, index) => {
+    const left = index === 0 ? L - 12 : (x(index - 1) + x(index)) / 2;
+    const right = index === points.length - 1 ? W : (x(index) + x(index + 1)) / 2;
+    const target = svgEl('rect', { id: `stats-point-${point.key}`, class: 'chart-period-target', x: left, y: T, width: right - left, height: H - T,
+      role: 'button', tabindex: point.key === selectedKey ? '0' : '-1', 'aria-pressed': String(point.key === selectedKey),
+      'aria-label': `${point.periodLabel || point.label}: ${fmtNum(point.value)}${unit ? ' ' + unit : ''}` });
+    target.addEventListener('click', () => onSelect(point.key));
+    target.addEventListener('keydown', (event) => {
+      let nextIndex = index;
+      if (event.key === 'ArrowLeft') nextIndex = Math.max(0, index - 1);
+      else if (event.key === 'ArrowRight') nextIndex = Math.min(points.length - 1, index + 1);
+      else if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = points.length - 1;
+      else if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      onSelect(points[nextIndex].key);
+    });
+    svg.append(target);
+  });
   return svg;
 }
 
@@ -138,26 +162,116 @@ function renderStats() {
 
 // The start page: workouts per week by default. It covers strength and cardio alike and matches the twice-a-week quest rhythm.
 function renderOverview(panel) {
-  panel.append(accountBar());
-  const lifted = workouts.reduce((t, w) => t + OVERVIEW_METRICS.lifted.of(w), 0);
-  const km = workouts.reduce((t, w) => t + OVERVIEW_METRICS.distance.of(w), 0);
-  panel.append(h('div', { class: 'totals' }, [['Workouts', String(workouts.length)], ['Lifted', `${shortNum(lifted)} kg`], ['Distance', `${shortNum(round2(km))} km`]]
-    .map(([k, v]) => h('div', { class: 'total' }, h('div', { class: 'total-val', text: v }), h('div', { class: 'slot-label', text: k })))));
+  const overview = h('div', { id: 'stats-overview' });
+  panel.append(overview);
+  renderOverviewContent(overview);
+}
 
-  panel.append(segmented(Object.entries(OVERVIEW_METRICS).map(([id, m]) => [id, m.label]), statsMetric, (v) => { statsMetric = v; renderStats(); }, 'stats-seg'));
-  panel.append(segmented([['week', 'Weekly'], ['month', 'Monthly']], statsPeriod, (v) => { statsPeriod = v; renderStats(); }, 'stats-seg'));
+function updateStatsOverview(focusId) {
+  const main = document.querySelector('main');
+  const scrollTop = main.scrollTop;
+  renderOverviewContent($('stats-overview'));
+  if (focusId) $(focusId)?.focus({ preventScroll: true });
+  main.scrollTop = scrollTop;
+}
 
+function statsPeriods(period) {
+  const current = bucketStart(new Date(), period);
+  const earliest = period === 'week' ? new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7 * (CHART_BUCKETS - 1))
+    : new Date(current.getFullYear(), current.getMonth() - CHART_BUCKETS + 1, 1);
+  workouts.forEach((workout) => { const date = bucketStart(parseIso(workout.date), period); if (date < earliest) earliest.setTime(date.getTime()); });
+  const periods = [];
+  for (let date = current; date >= earliest; date = period === 'week' ? new Date(date.getFullYear(), date.getMonth(), date.getDate() - 7)
+    : new Date(date.getFullYear(), date.getMonth() - 1, 1)) periods.push(isoOf(date));
+  return periods;
+}
+
+function periodWorkouts(key, period) {
+  const start = parseIso(key);
+  const next = isoOf(period === 'week' ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
+    : new Date(start.getFullYear(), start.getMonth() + 1, 1));
+  return workouts.filter((workout) => workout.date >= key && workout.date < next);
+}
+
+function statsPeriodLabel(key, period) {
+  if (period === 'month') return parseIso(key).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const start = parseIso(key);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  const format = (date, year) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) });
+  return `${format(start, start.getFullYear() !== end.getFullYear())} - ${format(end, true)}`;
+}
+
+function statsArrow(direction) {
+  return svgEl('svg', { viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false' },
+    svgEl('path', { d: direction === 'previous' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6' }));
+}
+
+function renderOverviewContent(panel) {
+  const keys = statsPeriods(statsPeriod);
+  if (!keys.includes(statsSelectedPeriod[statsPeriod])) statsSelectedPeriod[statsPeriod] = keys[0];
+  const selected = statsSelectedPeriod[statsPeriod];
+  const index = keys.indexOf(selected);
+  const per = statsPeriod === 'week' ? 'week' : 'month';
+  const selectPeriod = (key, focusId) => { statsSelectedPeriod[statsPeriod] = key; updateStatsOverview(focusId); };
+  const periodSwitch = segmented([['week', 'Weekly'], ['month', 'Monthly']], statsPeriod, (value) => {
+    statsPeriod = value; updateStatsOverview(`stats-mode-${value}`);
+  }, 'stats-seg');
+  [...periodSwitch.children].forEach((button, buttonIndex) => { button.id = `stats-mode-${buttonIndex === 0 ? 'week' : 'month'}`; });
+  const picker = h('select', { id: 'stats-period-picker', class: 'select', 'aria-label': `Select ${per}`, hidden: true,
+    onchange: (event) => selectPeriod(event.target.value, 'stats-period-label'),
+    onkeydown: (event) => { if (event.key === 'Escape') { event.preventDefault(); picker.hidden = true; $('stats-period-label').setAttribute('aria-expanded', 'false'); $('stats-period-label').focus(); } }
+  }, keys.map((key) => h('option', { value: key, selected: key === selected }, statsPeriodLabel(key, statsPeriod))));
+  const dateButton = h('button', { id: 'stats-period-label', type: 'button', class: 'stats-period-label', 'aria-expanded': 'false',
+    'aria-controls': 'stats-period-picker', title: `Choose ${per}`, onclick: () => {
+      picker.hidden = !picker.hidden;
+      dateButton.setAttribute('aria-expanded', String(!picker.hidden));
+      if (!picker.hidden) picker.focus();
+    }
+  }, statsPeriodLabel(selected, statsPeriod));
+  const navigator = h('div', { class: 'stats-period-nav', role: 'group', 'aria-label': `Selected ${per}` },
+    h('button', { id: 'stats-period-previous', type: 'button', class: 'icon-btn', 'aria-label': `Previous ${per}`, title: `Previous ${per}`,
+      disabled: index === keys.length - 1, onclick: () => selectPeriod(keys[index + 1], index + 1 === keys.length - 1 ? 'stats-period-label' : 'stats-period-previous') }, statsArrow('previous')),
+    dateButton,
+    h('button', { id: 'stats-period-next', type: 'button', class: 'icon-btn', 'aria-label': `Next ${per}`, title: `Next ${per}`,
+      disabled: index === 0, onclick: () => selectPeriod(keys[index - 1], index === 1 ? 'stats-period-label' : 'stats-period-next') }, statsArrow('next')));
+  const sessions = periodWorkouts(selected, statsPeriod);
+  const exercises = sessions.flatMap((workout) => workout.exercises);
+  const sets = exercises.filter((exercise) => exercise.type !== 'agility').flatMap((exercise) => exercise.sets);
+  const totals = h('div', { class: 'stats-period-totals', role: 'group', 'aria-label': 'Selected period totals' },
+    Object.entries(OVERVIEW_METRICS).map(([id, metric]) => {
+      const value = round2(sessions.reduce((total, workout) => total + metric.of(workout), 0));
+      return h('button', { id: `stats-total-${id}`, type: 'button', class: 'stats-total', 'aria-pressed': String(statsMetric === id),
+        'aria-label': `${metric.label}: ${fmtNum(value)}${metric.unit ? ' ' + metric.unit : ''}`,
+        onclick: () => { statsMetric = id; updateStatsOverview(`stats-total-${id}`); } },
+        h('span', { class: 'total-val', text: `${shortNum(value)}${metric.unit ? ' ' + metric.unit : ''}` }),
+        h('span', { class: 'stats-total-label', text: metric.label }));
+    }));
+  const details = h('dl', { class: 'stats-period-details', 'aria-label': 'Selected period activity' },
+    [['Exercises', exercises.length], ['Sets', sets.length], ['Minutes', exercises.reduce((total, exercise) => total + (exercise.minutes || 0), 0)]]
+      .map(([label, value]) => h('div', {}, h('dt', { text: label }), h('dd', { text: fmtNum(value) }))));
   const metric = OVERVIEW_METRICS[statsMetric];
-  const series = buildSeries(metric, statsPeriod);
+  let series = buildSeries(metric, statsPeriod);
+  if (selected < series[0].key) {
+    const endIndex = Math.min(Math.max(0, index - 5), Math.max(0, keys.length - CHART_BUCKETS));
+    series = buildSeries(metric, statsPeriod, CHART_BUCKETS, keys[endIndex]);
+  }
+  series = series.map((point) => ({ ...point, periodLabel: statsPeriodLabel(point.key, statsPeriod) }));
   const goal = statsMetric === 'workouts' && statsPeriod === 'week' ? account.weeklyGoal : null;
   const unit = metric.unit ? ` ${metric.unit}` : '';
-  const current = series[series.length - 1].value;
+  const value = series.find((point) => point.key === selected).value;
   const best = Math.max(...series.map((p) => p.value));
-  const per = statsPeriod === 'week' ? 'week' : 'month';
-  panel.append(h('div', { class: 'card chart-card' },
-    h('div', { class: 'slot-name', text: `${metric.title} per ${per}` }),
-    lineChart(series, { unit: metric.unit, goal, whole: statsMetric === 'workouts', label: `${metric.title} per ${per}` }),
-    h('div', { class: 'stat-note', text: `This ${per}: ${shortNum(current)}${unit}. Best: ${shortNum(best)}${unit}.${goal ? ` Goal: ${goal} a week.` : ''}` })));
+  const chart = h('div', { class: 'stats-trend' }, h('h2', { text: `${metric.title} per ${per}` }),
+    lineChart(series, { unit: metric.unit, goal, whole: statsMetric === 'workouts', selectedKey: selected,
+      label: `${metric.title} per ${per}`, onSelect: (key) => selectPeriod(key, `stats-point-${key}`) }),
+    h('p', { class: 'stat-note', text: `Selected ${per}: ${shortNum(value)}${unit}. Best shown: ${shortNum(best)}${unit}.${goal ? ` Goal: ${goal} a week.` : ''}` }));
+  const allTime = h('section', { class: 'stats-all-time', 'aria-label': 'All-time totals' }, h('h2', { text: 'All-time' }),
+    h('dl', { class: 'stats-all-time-totals' }, Object.values(OVERVIEW_METRICS).map((definition) =>
+      h('div', {}, h('dt', { text: definition.label }), h('dd', { text: `${fmtNum(round2(workouts.reduce((total, workout) => total + definition.of(workout), 0)))}${definition.unit ? ' ' + definition.unit : ''}` })))));
+  panel.replaceChildren(periodSwitch, navigator, picker, totals, details, chart,
+    statsPeriod === 'week' ? h('section', { id: 'weekly-workout-summary', class: 'weekly-workout-summary', 'aria-label': 'Muscles trained' },
+      h('h2', { text: 'Muscles trained' }), musclePreview('the selected week', trainedMuscles(exercises), false),
+      !sessions.length ? h('p', { class: 'stat-note', text: 'No workouts logged this week.' }) : null) : null, allTime);
 }
 
 function renderExerciseStats(panel) {

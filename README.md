@@ -2,6 +2,8 @@
 
 An iPhone-installable web app for logging workouts, with an RPG layer on top. Log strength and agility workouts, earn XP and gold, fight through quests, open present boxes for gear, and watch your progress in charts.
 
+Programs add reusable workout sessions with planned sets/rep ranges or distance targets. Follow Compound Foundations or create your own, start the next session from Home, save partial work, substitute or skip exercises, and follow campaign milestones in Adventure. Targets never count as logged results. See [docs/programs.md](docs/programs.md) for the workflow.
+
 There are two layers. The **account** is the tracker: it owns the workout log, the History and Stats tabs, the weekly goal and an account level. **Characters** are the game: each has a class, XP, Strength and Agility levels, gear, gold and quests, and turns the account's workouts into progress. You can make as many characters as you like and take each one to max level; the account levels up with all of them.
 
 There is no build step, backend, hosted database or runtime dependency. Saves stay on the device in IndexedDB. There is deliberately no service worker, offline cache or backup import/export. Internet access is needed to load the app reliably; clearing site data can erase saves. Different devices do not sync.
@@ -20,10 +22,10 @@ The pixel font is optional. Put `PressStart2P-Regular.ttf` in `fonts/` (see `fon
 
 ## Documentation
 
-| Read this                                      | When you want to                                                                                                      |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [docs/content-guide.md](docs/content-guide.md) | Add or change enemies, quests, sprites, gear, avatars, classes, slots, tabs, themes, store items, or tune the numbers |
-| [docs/architecture.md](docs/architecture.md)   | Understand how it works: state, storage format, the workout save pipeline, quests, loot, charts, theming              |
+| Read this                                      | When you want to                                                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/content-guide.md](docs/content-guide.md) | Add or change enemies, quests, sprites, gear, character portraits, classes, slots, tabs, themes, store items, or tune the numbers |
+| [docs/architecture.md](docs/architecture.md)   | Understand how it works: state, storage format, the workout save pipeline, quests, loot, charts, theming                          |
 
 ## Project layout
 
@@ -40,29 +42,33 @@ docs/                Developer documentation
 
 ### The scripts in `js/`
 
-| File            | What lives there                                                                          |
-| --------------- | ----------------------------------------------------------------------------------------- |
-| `config.js`     | Game rules and tuning numbers: level cap, XP, gold, rarities, slots, store prices, themes |
-| `art.js`        | All pixel art: avatars, enemies, present box, gear icons, headshot, looks                 |
-| `classes.js`    | Class content: gear names, quests, chapter title. One entry per class.                    |
-| `state.js`      | Shared state variables and small helpers (levels, stat info, gear bonus)                  |
-| `dom.js`        | `h()` element builder, sprite drawing, toast                                              |
-| `database.js`   | IndexedDB access and save failure reporting                                               |
-| `storage.js`    | Theme, the `persist*()` functions, loading, and migration of older saves                  |
-| `characters.js` | HUD, character select, character creation, log out                                        |
-| `account.js`    | Account onboarding (step 1), the account card, weekly goal picker                         |
-| `tabs.js`       | `TAB_DEFS` and tab switching                                                              |
-| `log.js`        | Log tab                                                                                   |
-| `loot.js`       | Loot rolling, item looks, equipping                                                       |
-| `quests.js`     | Quest tab and the quest progress rules                                                    |
-| `workout.js`    | Saving a workout and the present box dialog                                               |
-| `history.js`    | History tab                                                                               |
-| `stats.js`      | Stats tab and the SVG line chart                                                          |
-| `gear.js`       | Gear tab and the headshot                                                                 |
-| `bag.js`        | Bag tab                                                                                   |
-| `store.js`      | Store tab                                                                                 |
-| `settings.js`   | Settings tab                                                                              |
-| `app.js`        | `RENDERERS` and start-up. Always loaded last.                                             |
+| File            | What lives there                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `config.js`     | Game rules and tuning numbers: level cap, XP, gold, rarities, slots, store prices, themes  |
+| `art.js`        | All pixel art: enemies, present box, gear icons, headshot, looks                           |
+| `classes.js`    | Class content: gear names, quests, chapter title. One entry per class.                     |
+| `state.js`      | Shared state variables and small helpers (levels, stat info, gear bonus)                   |
+| `programs.js`   | Program presets, target validation, run snapshots, partial-session progress and milestones |
+| `program-ui.js` | Program library/builder, campaign view, schedule and logging controls                      |
+| `dom.js`        | `h()` element builder, sprite drawing, toast                                               |
+| `database.js`   | IndexedDB access and save failure reporting                                                |
+| `storage.js`    | Theme, the `persist*()` functions, loading, and migration of older saves                   |
+| `characters.js` | HUD, character select, character creation, log out                                         |
+| `account.js`    | Account onboarding (step 1), the account card, weekly goal picker                          |
+| `tabs.js`       | `TAB_DEFS` and tab switching                                                               |
+| `log.js`        | Log tab                                                                                    |
+| `loot.js`       | Loot rolling, item looks, equipping                                                        |
+| `quests.js`     | Quest tab and the quest progress rules                                                     |
+| `workout.js`    | Saving a workout and the present box dialog                                                |
+| `history.js`    | History tab                                                                                |
+| `stats.js`      | Stats tab and the SVG line chart                                                           |
+| `gear.js`       | Gear tab and the headshot                                                                  |
+| `bag.js`        | Bag tab                                                                                    |
+| `store.js`      | Store tab                                                                                  |
+| `settings.js`   | Settings tab                                                                               |
+| `app.js`        | `RENDERERS` and start-up. Always loaded last.                                              |
+
+Run the program lifecycle and workout-save regression tests with `node --test tools/programs.test.cjs`.
 
 ## How the scripts fit together (read this before adding a file)
 
@@ -83,4 +89,4 @@ To add a file, create `js/yourfile.js` and add its `<script>` tag to `index.html
 - **Colors come from CSS variables** (`var(--dark)`, `var(--bar-bg)`, ...), never hard-coded, so both themes work. See the token table in `docs/architecture.md`.
 - **Sprites are 16x16 and use three tones.** Details in `docs/content-guide.md`.
 - Each tab renderer clears its own panel and rebuilds it (`panel.replaceChildren(...)`). Keep renderers cheap, and when a typing handler would lose focus by re-rendering, update the DOM in place (see `exerciseCard` in `log.js`).
-- Saved ids are forever: quest ids, class ids, gear `look` ids, avatar ids and slot names are stored in users' data. Add new ones freely, but do not rename or delete existing ones without handling old saves.
+- Saved ids are forever: quest ids, class ids, gear `look` ids and slot names are stored in users' data. Add new ones freely, but do not rename or delete existing ones without handling old saves.

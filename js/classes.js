@@ -9,7 +9,6 @@ const CLASSES = {
     name: 'Salaryman',
     blurb: 'Suit, tie and a trusty briefcase. Fights the daily grind.',
     enabled: true,
-    avatars: ['salaryman_default','punk_default','hippie_default'],
     gear: {
       materials: ['Budget', 'Casual', 'Office', 'Business', 'Designer'],
       pieces: {
@@ -89,5 +88,5 @@ const CLASSES = {
   },
   punk:   { name: 'Punk', blurb: '', enabled: false },
   athlete: { name: 'Athlete', blurb: '', enabled: false },
-  hippie: { name: 'Jazz Hippie', blurb: '', enabled: false }
+  hippie: { name: 'Hippie', blurb: '', enabled: false }
 };

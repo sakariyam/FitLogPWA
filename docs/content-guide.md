@@ -11,7 +11,7 @@ open tools/sprite-preview.html    # look at the art in the game's own CSS, both 
 
 Then reload the extension (`chrome://extensions`, reload icon) and try it.
 
-Contents: [Pixel art](#pixel-art) · [Add an enemy](#add-an-enemy-sprite) · [Add a quest](#add-a-quest) · [Add a gear piece](#add-a-gear-piece) · [Add an avatar](#add-an-avatar) · [Add a class](#add-a-class) · [Add a gear slot](#add-a-gear-slot) · [Add a store item](#add-a-store-item) · [Add a tab](#add-a-tab) · [Add a theme](#add-a-theme) · [Tune the numbers](#tune-the-numbers) · [Add a chapter](#add-a-chapter-or-raise-the-level-cap)
+Contents: [Pixel art](#pixel-art) · [Add an enemy](#add-an-enemy-sprite) · [Add a quest](#add-a-quest) · [Add a gear piece](#add-a-gear-piece) · [Character portraits](#character-portraits) · [Add a class](#add-a-class) · [Add a gear slot](#add-a-gear-slot) · [Add a store item](#add-a-store-item) · [Add a tab](#add-a-tab) · [Add a theme](#add-a-theme) · [Tune the numbers](#tune-the-numbers) · [Add a chapter](#add-a-chapter-or-raise-the-level-cap)
 
 ---
 
@@ -19,31 +19,31 @@ Contents: [Pixel art](#pixel-art) · [Add an enemy](#add-an-enemy-sprite) · [Ad
 
 All sprites are **16x16**, written as an array of 16 strings of 16 characters.
 
-| Character | Meaning | Where it is allowed |
-|---|---|---|
-| `.` | Transparent (the background shows through) | everywhere |
-| `#` | Dark: outlines and the darkest fill (`--dark`) | everywhere |
-| `+` | Mid-dark fill (`--deep`) | everywhere |
-| `s` | Skin (`--skin`) | the class headshot only |
-| `_` | Erase the base pixel | look layers only |
+| Character | Meaning                                        | Where it is allowed     |
+| --------- | ---------------------------------------------- | ----------------------- |
+| `.`       | Transparent (the background shows through)     | everywhere              |
+| `#`       | Dark: outlines and the darkest fill (`--dark`) | everywhere              |
+| `+`       | Mid-dark fill (`--deep`)                       | everywhere              |
+| `s`       | Skin (`--skin`)                                | the class headshot only |
+| `_`       | Erase the base pixel                           | look layers only        |
 
 Only three tones exist (dark, mid-dark, background) because the Game Boy palette has no more shades that stay visible on both the page and panel backgrounds. Get depth from shapes, outlines and dithering, not from extra colors. Colors come from the theme, so the same sprite works in every theme.
 
 **Mirroring.** Most things are symmetrical. Draw the left 8 columns, then expand with this helper (paste it into the browser console or `node`):
 
 ```js
-const mirror = (half) => half.map((r) => r + [...r].reverse().join(''));
-mirror(['........', '.....###', '...##+++' /* ...16 half rows... */]);
+const mirror = (half) => half.map((r) => r + [...r].reverse().join(""));
+mirror(["........", ".....###", "...##+++" /* ...16 half rows... */]);
 ```
 
 **Sizes on screen.** Sprites are drawn as SVG and scaled by CSS in whole-number steps so pixels stay crisp:
 
-| CSS class | Size | Scale | Used for |
-|---|---|---|---|
-| `sprite` | 48 px | 3x | HUD avatar |
-| `sprite sm` | 32 px | 2x | Gear icons, avatar picker, quest card enemy rows |
-| `sprite big` | 96 px | 6x | Enemy on the quest screen, present box, loot reveal |
-| `character` | 96 px | 6x | Headshot on the Gear tab |
+| CSS class    | Size       | Scale  | Used for                                            |
+| ------------ | ---------- | ------ | --------------------------------------------------- |
+| `sprite`     | 48 px      | 3x     | General pixel sprites                               |
+| `sprite sm`  | 32 px      | 2x     | Gear icons, character selection, quest enemy rows   |
+| `sprite big` | 96 px      | 6x     | Enemy on the quest screen, present box, loot reveal |
+| `character`  | responsive | varies | Equipped character preview in Inventory             |
 
 Draw so the subject fills most of the 16x16 box; empty margins make small icons look tiny.
 
@@ -56,22 +56,22 @@ Enemies and travel legs share one table, `ENEMY_SPRITES` in `js/art.js`. Add an 
 ```js
 const ENEMY_SPRITES = {
   mushroom: [
-    '................',
-    '................',
-    '.....######.....',
-    '...##++++++##...',
-    '..#++.++++.++#..',
-    '.#++++++++++++#.',
-    '.#+.++.++.++.+#.',
-    '.#++++++++++++#.',
-    '.##############.',
-    '....#++++++#....',
-    '....#+#++#+#....',
-    '....#++++++#....',
-    '....#++++++#....',
-    '....########....',
-    '................',
-    '................'
+    "................",
+    "................",
+    ".....######.....",
+    "...##++++++##...",
+    "..#++.++++.++#..",
+    ".#++++++++++++#.",
+    ".#+.++.++.++.+#.",
+    ".#++++++++++++#.",
+    ".##############.",
+    "....#++++++#....",
+    "....#+#++#+#....",
+    "....#++++++#....",
+    "....#++++++#....",
+    "....########....",
+    "................",
+    "................",
   ],
   // ...existing sprites...
 };
@@ -87,7 +87,7 @@ Then use it in a quest (next section). Sprites are not tied to a class: any clas
 
 Quests live in the class data in `js/classes.js`, under `quests.strength` and `quests.agility`. The two paths use the same shape but different units:
 
-- **Strength quest**: enemies with **hp**, built with `E(name, sprite, hp)`. A workout deals 10 damage per *different* strength exercise.
+- **Strength quest**: enemies with **hp**, built with `E(name, sprite, hp)`. A workout deals 10 damage per _different_ strength exercise.
 - **Agility quest**: legs with **km**, built with `L(name, sprite, km)`. Every kilometre logged on an agility exercise counts.
 
 ```js
@@ -102,19 +102,19 @@ Quests live in the class data in `js/classes.js`, under `quests.strength` and `q
   boss: L('Back before the meeting', 'clock', 4) },
 ```
 
-| Field | Meaning |
-|---|---|
-| `id` | Unique across **every** quest of every class and path. Stored in saves: never rename or reuse one. |
-| `name` | Shown on the quest card and the active quest screen |
-| `req` | Strength level (strength path) or Agility level (agility path) needed to begin. Gear bonuses count. A `req` above `MAX_LEVEL` can only be met with gear. |
-| `rewardXp` | Character XP for clearing the quest |
-| `minRarity` | Index into `RARITIES` (0 common ... 4 legendary): the clear's present box is at least this rare |
-| `encounters` | One or more stages fought before the boss, in order |
-| `boss` | The final stage |
+| Field        | Meaning                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | Unique across **every** quest of every class and path. Stored in saves: never rename or reuse one.                                                       |
+| `name`       | Shown on the quest card and the active quest screen                                                                                                      |
+| `req`        | Strength level (strength path) or Agility level (agility path) needed to begin. Gear bonuses count. A `req` above `MAX_LEVEL` can only be met with gear. |
+| `rewardXp`   | Character XP for clearing the quest                                                                                                                      |
+| `minRarity`  | Index into `RARITIES` (0 common ... 4 legendary): the clear's present box is at least this rare                                                          |
+| `encounters` | One or more stages fought before the boss, in order                                                                                                      |
+| `boss`       | The final stage                                                                                                                                          |
 
 Rules the game applies (so you can balance around them):
 
-- **One workout finishes at most one stage per path.** Surplus damage or distance is discarded, not carried over. A quest with 1 encounter plus a boss therefore takes at least 2 workouts. That is the pacing lever: *number of stages = minimum workouts*.
+- **One workout finishes at most one stage per path.** Surplus damage or distance is discarded, not carried over. A quest with 1 encounter plus a boss therefore takes at least 2 workouts. That is the pacing lever: _number of stages = minimum workouts_.
 - Progress inside a stage is kept between workouts, so a stage can take several small workouts.
 - **Gold**: `10 x req` for every finished stage and `30 x req` more for clearing the quest (`GOLD_PER_ENCOUNTER`, `GOLD_PER_CLEAR`).
 - Existing convention: levels 1 to 4 use one encounter and a boss, level 5 and up use three. Keep quests in each list in ascending `req` order, because the UI lists them in array order.
@@ -128,7 +128,7 @@ Removing or renaming a quest id cancels any run in progress for that quest (the 
 
 ## Add a gear piece
 
-A gear *piece* is one named kind of item in a slot, such as "Fedora" in the head slot. Loot is built as `Material Piece of Suffix`, for example "Tailored Fedora of Grit". A piece needs up to three things, all keyed by the same **look id**:
+A gear _piece_ is one named kind of item in a slot, such as "Fedora" in the head slot. Loot is built as `Material Piece of Suffix`, for example "Tailored Fedora of Grit". A piece needs up to three things, all keyed by the same **look id**:
 
 1. an entry in the class's `gear.pieces[slot]` list (`js/classes.js`)
 2. an icon in `itemSprites[slot][look]` (`js/art.js`, the `SALARYMAN_ITEMS` object): the 16x16 picture shown in the bag, store and loot dialog
@@ -147,22 +147,22 @@ head: [{ name: 'Fedora', look: 'fedora' }, { name: 'Glasses', look: 'glasses' },
 const SALARYMAN_ITEMS = {
   head: {
     headphones: [
-      '................',
-      '................',
-      '.....######.....',
-      '...##......##...',
-      '..#..........#..',
-      '..#..........#..',
-      '.####......####.',
-      '.#++#......#++#.',
-      '.#++#......#++#.',
-      '.#++#......#++#.',
-      '.####......####.',
-      '................',
-      '................',
-      '................',
-      '................',
-      '................'
+      "................",
+      "................",
+      ".....######.....",
+      "...##......##...",
+      "..#..........#..",
+      "..#..........#..",
+      ".####......####.",
+      ".#++#......#++#.",
+      ".#++#......#++#.",
+      ".#++#......#++#.",
+      ".####......####.",
+      "................",
+      "................",
+      "................",
+      "................",
+      "................",
     ],
     // ...fedora, glasses...
   },
@@ -172,22 +172,22 @@ const SALARYMAN_ITEMS = {
 const SALARYMAN_LOOKS = {
   head: {
     headphones: [
-      '.....######.....',
-      '...##......##...',
-      '..#..........#..',
-      '..#..........#..',
-      '.##..........##.',
-      '.#+#........#+#.',
-      '.#+#........#+#.',
-      '.#+#........#+#.',
-      '.###........###.',
-      '................',
-      '................',
-      '................',
-      '................',
-      '................',
-      '................',
-      '................'
+      ".....######.....",
+      "...##......##...",
+      "..#..........#..",
+      "..#..........#..",
+      ".##..........##.",
+      ".#+#........#+#.",
+      ".#+#........#+#.",
+      ".#+#........#+#.",
+      ".###........###.",
+      "................",
+      "................",
+      "................",
+      "................",
+      "................",
+      "................",
+      "................",
     ],
     // ...fedora, glasses...
   },
@@ -207,15 +207,11 @@ What the game does with it:
 
 ---
 
-## Add an avatar
+## Character portraits
 
-Avatars are the pictures players choose when they create a character. Add the sprite to `AVATARS` in `js/art.js`, then list its key in the class's `avatars` array in `js/classes.js`:
+Every character portrait uses the class's base `headshot` with equipped head, body and neck `looks` layered on top. There is no separate portrait picker. Edit the class's headshot or gear overlays in `js/art.js` to change its appearance everywhere: header, Inventory, Settings and character selection.
 
-```js
-avatars: ['glasses', 'hat', 'tie', 'coffee', 'case', 'clock', 'newone'],
-```
-
-The create screen shows the avatars of whichever class is selected. If a saved avatar id no longer exists, the HUD falls back to the `glasses` sprite.
+`characterSvg(character, items, gear, cssClass)` in `js/gear.js` accepts an explicit character and its saved inventory/equipment when drawing character-selection cards. With no arguments it draws the active character. Re-render Inventory after equipment changes to update both the large preview and header portrait.
 
 ---
 
@@ -228,7 +224,6 @@ punk: {
   name: 'Punk',
   blurb: 'One line shown on the create screen.',
   enabled: true,
-  avatars: ['...'],                  // keys of AVATARS
   gear: {
     materials: ['Rusty', 'Studded', 'Patched', 'Custom', 'Legendary'],   // one per rarity, common to legendary
     pieces: {                        // every slot in SLOTS needs at least one piece
@@ -250,7 +245,7 @@ punk: {
 
 Put the art in `art.js` as separate constants (`PUNK_ITEMS`, `PUNK_HEADSHOT`, `PUNK_LOOKS`), the way the Salaryman's are, and reference them from the class. Quest ids must be unique across classes, so prefix them (`p-s1`, `p-a1`).
 
-Everything else follows automatically: the create screen lists the class, the avatar picker switches when it is selected, loot uses the class's gear names, the Gear tab headshot uses its base and looks, and the Quest tab shows only its quests (`classOf()` is the single lookup).
+Everything else follows automatically: the create screen lists the class, loot uses the class's gear names, character portraits use its base and equipped looks, and the Quest tab shows only its quests (`classOf()` is the active-character lookup).
 
 Two shortcuts while developing: a class may point at another class's art constants (`itemSprites: SALARYMAN_ITEMS`) until its own art exists, and `DEFAULT_CLASS` in `config.js` is the class preselected on the create screen and the fallback for unknown saved class ids. It must be an enabled class.
 
@@ -260,7 +255,7 @@ Two shortcuts while developing: a class may point at another class's art constan
 
 A slot is a place on the character (weapon, head, body, neck, feet). Adding one touches data only:
 
-1. `js/config.js`: add the id to `SLOTS` and a label to `SLOT_LABEL`. The order in `SLOTS` is the order shown on the Gear tab.
+1. `js/config.js`: add the id to `SLOTS` and a label to `SLOT_LABEL`. The order in `SLOTS` is the order shown in Inventory's equipped-slot strip. Update the strip's grid layout when adding slots and check it on narrow phones.
 2. For **every enabled class** in `js/classes.js`: add `gear.pieces.<slot>` with at least one piece, and `itemSprites.<slot>.<look>` icons in `art.js`.
 3. Only if the slot should be drawn on the headshot: add `looks.<slot>` layers, and add the slot to the draw-order list in `headshotRows()` in `js/gear.js` (currently `['body', 'neck', 'head']`; later entries draw on top).
 
@@ -292,27 +287,36 @@ Existing characters keep working: a missing slot loads as empty. New loot can ro
 
 ---
 
-## Add a tab
+## Add a page
 
-The app has two tab bars, **top** and **bottom**, with room for **5 tabs each**. Label length is limited by the pixel font's width: with up to 4 tabs on a bar, labels of up to 8 characters fit ("Settings"); with 5 tabs, keep them to 6 or fewer. `check-data` errors on a sixth tab and warns about labels that are probably too long. Always look at the result with the real font loaded.
+The app has four bottom destinations: **Home**, **Progress**, **Adventure**, and **Workout**, with the primary Workout button at the right. Home is the signed-in start page and offers Start/Resume workout, weekly goal progress, the latest workout and adventure shortcuts. Put related pages inside one of these groups instead of adding another global button. Progress and Adventure show local page switches; Adventure includes Store, while Settings & more is reached from Home for account management and character switching. Keep local labels short and check them at 320px with the real pixel font loaded.
 
 1. Create `js/notes.js` with a render function that fills its own panel:
 
    ```js
    function renderNotes() {
-     const panel = panelEl('notes');                 // the panel already exists
+     const panel = panelEl("notes"); // the panel already exists
      panel.replaceChildren(
-       h('div', { class: 'card' },
-         h('div', { class: 'slot-name', text: 'Notes' }),
-         h('div', { class: 'slot-label', text: `${account.name} has logged ${workouts.length} workouts.` })));
+       h(
+         "div",
+         { class: "card" },
+         h("div", { class: "slot-name", text: "Notes" }),
+         h("div", {
+           class: "slot-label",
+           text: `${account.name} has logged ${workouts.length} workouts.`,
+         }),
+       ),
+     );
    }
    ```
 
-2. Add the tab in `js/tabs.js`: `{ id: 'notes', label: 'Notes', bar: 'top' }`
+2. Add the page to `TAB_DEFS` in `js/tabs.js`: `{ id: 'notes', label: 'Notes' }`. Also add its ID to the appropriate `NAV_GROUPS` entry's `pages` array. For secondary Home pages, add a menu action in `renderMore()` or a Home shortcut.
 3. Register the renderer in `js/app.js`: `RENDERERS = { ..., notes: renderNotes }`
-4. Load the file in `popup.html`, **before** `js/app.js`: `<script src="js/notes.js"></script>`
+4. Load the file in `index.html`, **before** `js/app.js`: `<script src="js/notes.js"></script>`
 
-The tab button and the empty panel (`#panel-notes`) are created for you from `TAB_DEFS`. The renderer runs every time the tab is opened. After you change saved state, call the matching save function: `persist()` for character and account state, `persistWorkouts()` for the workout log, `persistDraft()` for the draft. The workout log and weekly goal are **account** data (`workouts`, `account`); XP, gold and gear are **character** data (`profile`, `inventory`, ...). If you need state that lives only while the popup is open, declare it with `let` at the top of your file (see `statsView` in `stats.js`).
+The empty panel (`#panel-notes`) is created from `TAB_DEFS`; its containing destination is selected from `NAV_GROUPS`. The renderer runs every time the page is opened. After you change saved state, call the matching save function: `persist()` for character and account state, `persistWorkouts()` for the workout log, `persistDraft()` for the draft. The workout log and weekly goal are **account** data (`workouts`, `account`); XP, gold and gear are **character** data (`profile`, `inventory`, ...). If you need state that lives only while the app is open, declare it with `let` at the top of your file (see `statsView` in `stats.js`).
+
+Exercise selection and creation are focused nested screens inside Workout: they call `setWorkoutFocus(true, title)` to hide global navigation and timer/save controls. Their Back actions return to the parent screen, and `renderLog()` restores normal navigation without resetting the draft or timer.
 
 ---
 
@@ -323,9 +327,17 @@ The tab button and the empty panel (`#panel-notes`) are created for you from `TA
 
    ```css
    [data-theme="sepia"] {
-     --dark: #3b2a1a; --deep: #7a5c3e; --mid: #d9c3a0; --light: #e8d8b9; --muted: #5c4630;
-     --bar-bg: #3b2a1a; --bar-fg: #e8d8b9; --bar-dim: #c4a97f; --bar-edge: #3b2a1a;
-     --skin: #d9c3a0; --scrim: rgba(59, 42, 26, 0.9);
+     --dark: #3b2a1a;
+     --deep: #7a5c3e;
+     --mid: #d9c3a0;
+     --light: #e8d8b9;
+     --muted: #5c4630;
+     --bar-bg: #3b2a1a;
+     --bar-fg: #e8d8b9;
+     --bar-dim: #c4a97f;
+     --bar-edge: #3b2a1a;
+     --skin: #d9c3a0;
+     --scrim: rgba(59, 42, 26, 0.9);
    }
    ```
 
@@ -341,25 +353,28 @@ The choice is saved as `theme` in storage and applies to every character.
 
 Everything below is in `js/config.js`.
 
-| Constant | Default | Effect |
-|---|---|---|
-| `MAX_LEVEL` | 10 | Level cap for the character **and** for Strength and Agility |
-| `XP_PER_WORKOUT` | 100 | Character XP for every saved workout |
-| `XP_PER_LEVEL` | 1000 | Character XP per level (flat) |
-| `STAT_XP_PER_SET` | 5 | Strength XP per logged set |
-| `XP_PER_KM` | 20 | Agility XP per km |
-| stat curve | 100 x 1.25^(n-1) | XP for Strength/Agility level n to n+1. Edit the `STAT_CUM` loop to change the shape. |
-| `DAMAGE_PER_ACTIVITY` | 10 | Strength quest damage per different exercise in a workout |
-| `GOLD_PER_ENCOUNTER` | 10 | Gold per finished stage, times the quest's `req` |
-| `GOLD_PER_CLEAR` | 30 | Gold for clearing a quest, times its `req` |
-| `RARITIES` | see file | Drop weight and stat bonus per rarity |
-| `SELL_PRICE` | 10, 30, 80, 200, 500 | Sell value by rarity |
-| `STORE_ITEMS` | 80 / 250 / 700 | Gift box prices and minimum rarity |
-| `DEFAULT_WEEKLY_GOAL`, `MAX_WEEKLY_GOAL` | 2, 7 | Default weekly goal for new accounts (each account picks its own, drawn as the goal line on the Stats chart) and the highest choice offered |
-| `ACCOUNT_XP_PER_LEVEL` | 1000 | Account XP per account level (flat, no cap) |
-| `ACCOUNT_XP_MASTERED` | 1000 | One-off account XP when a character first reaches max level |
-| `CHART_BUCKETS`, `CHART_SESSIONS` | 12, 20 | How many weeks/months and sessions the charts show |
-| `COMMON`, `AGILITY_RE` | | Exercise name suggestions, and the words that auto-select "Agility" |
+| Constant                                 | Default              | Effect                                                                                                                                      |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAX_LEVEL`                              | 10                   | Level cap for the character **and** for Strength and Agility                                                                                |
+| `XP_PER_WORKOUT`                         | 100                  | Character XP for every saved workout                                                                                                        |
+| `XP_PER_LEVEL`                           | 1000                 | Character XP per level (flat)                                                                                                               |
+| `STAT_XP_PER_SET`                        | 5                    | Strength XP per logged set                                                                                                                  |
+| `XP_PER_KM`                              | 20                   | Agility XP per km                                                                                                                           |
+| stat curve                               | 100 x 1.25^(n-1)     | XP for Strength/Agility level n to n+1. Edit the `STAT_CUM` loop to change the shape.                                                       |
+| `DAMAGE_PER_ACTIVITY`                    | 10                   | Strength quest damage per different exercise in a workout                                                                                   |
+| `GOLD_PER_ENCOUNTER`                     | 10                   | Gold per finished stage, times the quest's `req`                                                                                            |
+| `GOLD_PER_CLEAR`                         | 30                   | Gold for clearing a quest, times its `req`                                                                                                  |
+| `RARITIES`                               | see file             | Drop weight and stat bonus per rarity                                                                                                       |
+| `SELL_PRICE`                             | 10, 30, 80, 200, 500 | Sell value by rarity                                                                                                                        |
+| `STORE_ITEMS`                            | 80 / 250 / 700       | Gift box prices and minimum rarity                                                                                                          |
+| `DEFAULT_WEEKLY_GOAL`, `MAX_WEEKLY_GOAL` | 2, 7                 | Default weekly goal for new accounts (each account picks its own, drawn as the goal line on the Stats chart) and the highest choice offered |
+| `ACCOUNT_XP_PER_LEVEL`                   | 1000                 | Account XP per account level (flat, no cap)                                                                                                 |
+| `ACCOUNT_XP_MASTERED`                    | 1000                 | One-off account XP when a character first reaches max level                                                                                 |
+| `CHART_BUCKETS`, `CHART_SESSIONS`        | 12, 20               | How many weeks/months and sessions the charts show                                                                                          |
+| `COMMON`, `EXERCISE_TYPES`               |                      | Preset exercises in the picker and their fixed Strength or Agility type                                                                     |
+| `MUSCLE_GROUPS`, `EXERCISE_MUSCLES`      |                      | Muscle-group labels and preset main/supporting groups used by the exercise preview                                                          |
+
+Players can create exercises from the exercise picker with a unique name, a Strength or Agility type, and at least one targeted muscle group. These definitions are stored as account-level `customExercises` and appear beside presets in search. Their selected groups are shown as main muscles in the information preview. Workout cards use the chosen definition's type without offering a per-card override; existing drafts and repeated workouts retain their saved type.
 
 Existing saves are not rewritten when you change a number: stored XP stays, and levels are recomputed from it.
 

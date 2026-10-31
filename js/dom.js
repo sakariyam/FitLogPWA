@@ -34,7 +34,6 @@ function spriteFrom(rows, cls = 'sprite') {
   rows.forEach((row, y) => [...row].forEach((c, x) => { if (TONE_CLASS[c]) svg.append(svgRect(x, y, TONE_CLASS[c])); }));
   return svg;
 }
-const avatarSprite = (key, cls) => spriteFrom(AVATARS[key] || AVATARS.salaryman_default, cls);
 const panelEl = (name) => document.getElementById('panel-' + name);
 const $ = (id) => document.getElementById(id);
 

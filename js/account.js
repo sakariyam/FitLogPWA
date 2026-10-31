@@ -17,9 +17,6 @@ function accountCard() {
     h('div', { class: 'stat-note', text: `${workouts.length} workout${workouts.length === 1 ? '' : 's'} logged. ${n} character${n === 1 ? '' : 's'}, ${masteredCount()} at max level.` }));
 }
 
-// One-line version for the Stats tab.
-const accountBar = () => h('div', { class: 'card gold' }, h('span', { text: account.name || 'Player' }), h('span', { class: 'gold-amt', text: `Account LV ${accountLevel(account.xp)}` }));
-
 function weeklyGoalSelect(current, onPick) {
   return h('select', { class: 'select', id: 'weekly-goal', 'aria-label': 'Workouts per week', onchange: (e) => onPick(Number(e.target.value)) },
     Array.from({ length: MAX_WEEKLY_GOAL }, (_, i) => i + 1).map((n) => h('option', { value: String(n), selected: n === current }, `${n} workout${n === 1 ? '' : 's'} a week`)));

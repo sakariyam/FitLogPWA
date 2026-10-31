@@ -23,7 +23,7 @@ function persist() {
 }
 const persistAccount = () => appStorage.set({ account, schema: SCHEMA });
 const persistWorkouts = () => appStorage.set({ workouts });
-const persistDraft = () => appStorage.set({ draft });
+const persistDraft = () => { syncWorkoutTimer(); return appStorage.set({ draft }); };
 
 function loadCharacter(id) {
   const { inventory: inv, equipped: eq, quests: q, ...p } = characters[id];
@@ -41,7 +41,7 @@ function fromV0(r) {
   const id = crypto.randomUUID();
   const st = r.profile.stats || {};
   const character = {
-    id, name: r.profile.name, classId: DEFAULT_CLASS, avatar: CLASSES[DEFAULT_CLASS].avatars[0],
+    id, name: r.profile.name, classId: DEFAULT_CLASS,
     xp: Math.min(MAX_XP, r.profile.xp || 0),
     stats: { strength: Math.min(STAT_MAX_XP, st.strength || 0), agility: Math.min(STAT_MAX_XP, st.agility || 0) },
     cleared: {}, gold: 0, workouts: r.workouts || [], inventory: [], equipped: emptyGear(), quests: emptyQuests(), draft: r.draft || null
@@ -87,9 +87,11 @@ async function load() {
   applyTheme(r.theme);
   account = r.account ? { ...defaultAccount(), ...r.account } : null;
   characters = r.characters || {};
+  Object.values(characters).forEach((character) => { delete character.avatar; });
   workouts = r.workouts || [];
+  customExercises = Array.isArray(r.customExercises) ? r.customExercises : [];
+  programData = r.programData ? { ...emptyProgramData(), ...r.programData } : emptyProgramData();
   draft = r.draft || blankDraft();
-  if (!draft.exercises.length) draft.exercises.push(newExercise());
   activeId = r.activeId || null;
   if (activeId && characters[activeId]) loadCharacter(activeId); else activeId = null;
 }

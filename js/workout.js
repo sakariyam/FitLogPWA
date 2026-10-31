@@ -2,22 +2,58 @@
 // Classic script: shares globals with the other files in js/ (load order is in popup.html).
 
 /* ================= Save workout and gift box ================= */
-async function saveWorkout() {
+let savingWorkout = false;
+
+async function saveWorkout(options = {}) {
+  if (savingWorkout) return;
   const exercises = draft.exercises
+    .filter((exercise) => !exercise.skipped)
     .map((ex) => {
       const type = ex.type || 'strength';
       const name = ex.name.trim();
-      if (type === 'agility') return { name, type, km: round2(Number(ex.km) || 0), minutes: Number(ex.minutes) || 0, sets: [] };
-      return { name, type, sets: ex.sets.filter((s) => s.reps !== '' || s.kg !== '').map((s) => ({ reps: Number(s.reps) || 0, kg: Number(s.kg) || 0 })) };
+      const planned = ex.programItemId ? { programItemId: ex.programItemId, target: structuredClone(ex.target), ...(ex.substitutedFrom ? { substitutedFrom: ex.substitutedFrom } : {}) } : {};
+      if (type === 'agility') return { name, type, km: round2(Number(ex.km) || 0), minutes: Number(ex.minutes) || 0, sets: [], ...planned };
+      return { name, type, sets: ex.sets.filter((s) => ex.programItemId ? Number(s.reps) > 0 : s.reps !== '' || s.kg !== '').map((s) => ({ reps: Number(s.reps) || 0, kg: Number(s.kg) || 0 })), ...planned };
     })
     .filter((ex) => ex.name && (ex.type === 'agility' ? ex.km > 0 : ex.sets.length));
 
-  if (!exercises.length) return toast('Add an exercise with sets, or a distance for agility.');
-
-  workouts.push({ id: Date.now(), date: draft.date || today(), name: draft.name.trim(), character: profile.name, characterId: profile.id, exercises });
+  const context = draft.program;
+  const partial = !!context && draft.programSaveMode === 'partial';
+  const savedEarlier = context && workouts.filter((workout) => workout.program?.attemptId === context.attemptId);
+  if (!exercises.length && (!context || partial || !savedEarlier.length)) return toast('Add an exercise with sets, or a distance for agility.');
+  if (context && !partial && !options.allowIncomplete) {
+    const pending = programSessionProgress(exercises).filter((entry) => !entry.done && !entry.skipped);
+    if (pending.length) {
+      programDialog('Finish an incomplete session?',
+        h('p', { text: `${pending.length} exercise${pending.length === 1 ? ' has' : 's have'} fewer logged sets or distance than planned. You can save the work so far and continue later, or finish this session deliberately.` }),
+        [{ label: 'Save partial and continue later', primary: true, action: () => { draft.programSaveMode = 'partial'; saveWorkout(); } },
+          { label: 'Finish session anyway', action: () => saveWorkout({ allowIncomplete: true }) }]);
+      return;
+    }
+  }
+  savingWorkout = true;
+  const snapshot = structuredClone({ workouts, draft, programData, profile, account, inventory, equipped, quests, characters });
+  const rollback = () => {
+    ({ workouts, draft, programData, profile, account, inventory, equipped, quests, characters } = snapshot);
+    renderLog(); renderHud(); toast('Workout could not be saved. Your draft is still available.');
+  };
+  try {
+  if (!exercises.length) {
+    const lines = completeProgramSession(context, savedEarlier[0].id);
+    savedEarlier[0].program.finished = true;
+    draft = blankDraft();
+    if (!await appStorage.set({ programData, workouts, draft })) { rollback(); return; }
+    renderLog(); toast(lines.length ? 'Program session complete' : 'Practice finished');
+    return;
+  }
+  const nextDraft = partial ? remainingProgramDraft(draft, exercises) : blankDraft();
+  const workout = { id: Date.now(), date: draft.date || today(), name: draft.name.trim(), character: profile.name, characterId: profile.id, exercises,
+    ...(context ? { program: { ...structuredClone(context), finished: !partial }, skipped: draft.exercises.filter((exercise) => exercise.skipped).map((exercise) => exercise.programItemId) } : {}) };
+  const programLines = context && !partial ? completeProgramSession(context, workout.id) : [];
+  workouts.push(workout);
   workouts.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
-  draft = blankDraft();
-  draft.exercises.push(newExercise());
+  draft = nextDraft;
+  renderWorkoutTimer();
 
   const gains = { strength: 0, agility: 0 };
   exercises.forEach((e) => {
@@ -40,10 +76,10 @@ async function saveWorkout() {
   const item = rollLoot(gains.agility > gains.strength ? 'agility' : 'strength', minRarity);
   inventory.unshift(item); // added right away, so the loot is safe even if the popup closes
 
-  await Promise.all([persist(), persistWorkouts(), persistDraft()]);
-  refreshExerciseList();
+  characters[profile.id] = { ...profile, inventory, equipped, quests };
+  if (!await appStorage.set({ characters, activeId, schema: SCHEMA, account, workouts, draft, programData })) { rollback(); return; }
 
-  const lines = [`+${XP_PER_WORKOUT} XP`, ...battle.lines];
+  const lines = [`+${XP_PER_WORKOUT} XP`, ...battle.lines, ...programLines];
   if (levelOf(profile.xp) > levelOf(before.xp)) lines.push(levelOf(profile.xp) >= MAX_LEVEL ? `Level up! MAX LEVEL ${MAX_LEVEL}` : `Level up! You are now LV ${levelOf(profile.xp)}`);
   if (mastered) lines.push(mastered);
   if (accountLevel(account.xp) > accountLevel(before.accountXp)) lines.push(`Account level up! You are now account LV ${accountLevel(account.xp)}`);
@@ -52,10 +88,15 @@ async function saveWorkout() {
     if (gained) lines.push(`+${gained} ${STATS[k]} XP`);
     if (statInfo(profile.stats[k]).level > statInfo(before[k]).level) lines.push(`${STATS[k]} is now LV ${statInfo(profile.stats[k]).level}`);
   });
-  showPresent({ title: 'Workout complete!', lootTitle: battle.cleared.length ? 'Boss loot!' : 'You found loot!', lines, item, after: () => renderHud(before.xp) });
+  showPresent({ title: partial ? 'Workout progress saved' : 'Workout complete!', lootTitle: battle.cleared.length ? 'Boss loot!' : 'You found loot!', lines, item,
+    ...(partial ? { returnTab: 'log', returnLabel: 'Continue session' } : {}), after: () => renderHud(before.xp) });
+  } catch (error) {
+    console.error('Workout could not be saved', error);
+    rollback();
+  } finally { savingWorkout = false; }
 }
 
-function showPresent({ title, lootTitle = 'You found loot!', lines, item, returnTab = 'bag', returnLabel = 'Put in bag', after = () => {} }) {
+function showPresent({ title, lootTitle = 'You found loot!', lines, item, returnTab = 'inventory', returnLabel = 'View inventory', after = () => {} }) {
   const modal = $('modal');
   const close = (tab) => { modal.hidden = true; modal.replaceChildren(); showTab(tab); after(); };
   const dialog = (label, ...kids) => h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': label }, kids);
@@ -69,7 +110,7 @@ function showPresent({ title, lootTitle = 'You found loot!', lines, item, return
       h('div', { class: 'loot-meta', text: `${rarityOf(item).label} ${stars(item)}` }),
       h('div', { class: 'loot-meta', text: `${SLOT_LABEL[item.slot]}: ${statText(item)}` }),
       keep,
-      h('button', { class: 'btn', onclick: () => { equipItem(item); close('gear'); } }, 'Equip now')
+      h('button', { class: 'btn', onclick: () => { equipItem(item); close('inventory'); } }, 'Equip now')
     ));
     keep.focus();
   };

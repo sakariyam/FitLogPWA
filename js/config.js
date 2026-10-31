@@ -31,7 +31,51 @@ const SLOT_LABEL = { weapon: 'Weapon', head: 'Head', body: 'Body', neck: 'Neck',
 
 const COMMON = ['Squat', 'Bench press', 'Deadlift', 'Overhead press', 'Barbell row', 'Pull-up', 'Dumbbell curl', 'Lunge', 'Leg press', 'Lat pulldown',
   'Running', 'Cycling', 'Swimming', 'Rowing machine', 'Walking'];
-const AGILITY_RE = /\b(run|running|jog|jogging|sprint|sprints|cycling|bike|biking|swim|swimming|rowing|jump rope|skipping|burpees?|hiit|cardio|treadmill|elliptical|stairs?|hike|hiking|walk|walking|box jumps?|jumping jacks?|mountain climbers?)\b/i;
+const EXERCISE_TYPES = {
+  'Squat': 'strength', 'Bench press': 'strength', 'Deadlift': 'strength', 'Overhead press': 'strength',
+  'Barbell row': 'strength', 'Pull-up': 'strength', 'Dumbbell curl': 'strength', 'Lunge': 'strength',
+  'Leg press': 'strength', 'Lat pulldown': 'strength', 'Running': 'agility', 'Cycling': 'agility',
+  'Swimming': 'agility', 'Rowing machine': 'agility', 'Walking': 'agility'
+};
+const MUSCLE_GROUPS = {
+  chest: 'Chest', shoulders: 'Shoulders', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms',
+  core: 'Core', upperBack: 'Upper back', lats: 'Lats', lowerBack: 'Lower back', glutes: 'Glutes',
+  quads: 'Quadriceps', hamstrings: 'Hamstrings', calves: 'Calves'
+};
+const EXERCISE_INFO = {
+  'Squat': { muscles: 'Quadriceps, glutes and core', cue: 'Keep your feet planted and your torso braced. Bend at the hips and knees, then stand back up with control.' },
+  'Bench press': { muscles: 'Chest, triceps and shoulders', cue: 'Lie on a bench with feet planted. Lower the bar toward your chest with control, then press up. Use safeties or a spotter.' },
+  'Deadlift': { muscles: 'Glutes, hamstrings and back', cue: 'Brace your torso and hinge at the hips. Keep the weight close as you stand, then lower it with control.' },
+  'Overhead press': { muscles: 'Shoulders and triceps', cue: 'Brace your core and press the weight overhead without leaning back. Lower it to shoulder height with control.' },
+  'Barbell row': { muscles: 'Upper back, lats and biceps', cue: 'Hinge at the hips with a braced torso. Pull the bar toward your lower ribs without swinging, then lower slowly.' },
+  'Pull-up': { muscles: 'Lats, upper back and biceps', cue: 'Start from a controlled hang. Pull your body toward the bar without swinging, then lower with control. Use assistance if needed.' },
+  'Dumbbell curl': { muscles: 'Biceps and forearms', cue: 'Keep your elbows near your sides. Curl the dumbbells without swinging your torso, then lower slowly.' },
+  'Lunge': { muscles: 'Quadriceps, glutes and hamstrings', cue: 'Step into a stable split stance. Bend both knees with control, keeping your front knee aligned with your foot, then return.' },
+  'Leg press': { muscles: 'Quadriceps and glutes', cue: 'Keep your back against the pad. Lower the platform only as far as you can without rounding your lower back, then press away without locking your knees.' },
+  'Lat pulldown': { muscles: 'Lats, upper back and biceps', cue: 'Sit tall and pull the bar toward your upper chest. Keep your torso steady and let the bar rise with control.' },
+  'Running': { muscles: 'Cardiovascular endurance and legs', cue: 'Run at a sustainable pace with relaxed shoulders and comfortable strides. Increase distance gradually.' },
+  'Cycling': { muscles: 'Cardiovascular endurance, quadriceps and glutes', cue: 'Adjust the saddle for a slight knee bend at the bottom of the pedal stroke. Pedal smoothly at a manageable resistance.' },
+  'Swimming': { muscles: 'Cardiovascular endurance and full body', cue: 'Use a stroke you are comfortable with and breathe regularly. Swim in a supervised area and rest as needed.' },
+  'Rowing machine': { muscles: 'Cardiovascular endurance, legs and back', cue: 'Drive with your legs, lean back slightly, then pull the handle toward your lower ribs. Return arms first, then torso, then knees.' },
+  'Walking': { muscles: 'Cardiovascular endurance and legs', cue: 'Walk at a comfortable or brisk pace with an upright posture and relaxed arms. Choose a distance suited to your current fitness.' }
+};
+const EXERCISE_MUSCLES = {
+  'Squat': { main: ['quads', 'glutes'], supporting: ['core', 'hamstrings'] },
+  'Bench press': { main: ['chest'], supporting: ['triceps', 'shoulders'] },
+  'Deadlift': { main: ['glutes', 'hamstrings'], supporting: ['lowerBack', 'upperBack', 'core', 'forearms'] },
+  'Overhead press': { main: ['shoulders'], supporting: ['triceps', 'core'] },
+  'Barbell row': { main: ['upperBack', 'lats'], supporting: ['biceps', 'lowerBack', 'forearms'] },
+  'Pull-up': { main: ['lats'], supporting: ['upperBack', 'biceps', 'forearms', 'core'] },
+  'Dumbbell curl': { main: ['biceps'], supporting: ['forearms'] },
+  'Lunge': { main: ['quads', 'glutes'], supporting: ['hamstrings', 'calves', 'core'] },
+  'Leg press': { main: ['quads', 'glutes'], supporting: ['hamstrings', 'calves'] },
+  'Lat pulldown': { main: ['lats'], supporting: ['upperBack', 'biceps'] },
+  'Running': { main: ['quads', 'glutes', 'calves'], supporting: ['hamstrings', 'core'] },
+  'Cycling': { main: ['quads', 'glutes'], supporting: ['hamstrings', 'calves'] },
+  'Swimming': { main: ['lats', 'shoulders'], supporting: ['chest', 'triceps', 'core', 'quads', 'glutes'] },
+  'Rowing machine': { main: ['quads', 'glutes', 'lats'], supporting: ['hamstrings', 'upperBack', 'biceps', 'core'] },
+  'Walking': { main: ['quads', 'glutes', 'calves'], supporting: ['hamstrings', 'core'] }
+};
 
 const RARITIES = [
   { key: 'common', label: 'Common', weight: 60, bonus: 1 },

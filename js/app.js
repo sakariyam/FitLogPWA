@@ -1,7 +1,7 @@
 // Starts the app. Loaded last, after every other script.
 // Classic script: shares globals with the other files in js/ (load order is in popup.html).
 
-const RENDERERS = { log: renderLog, history: renderHistory, stats: renderStats, quest: renderQuest, gear: renderGear, bag: renderBag, store: renderStore, settings: renderSettings };
+const RENDERERS = { home: renderHome, log: renderLog, programs: renderPrograms, history: renderHistory, stats: renderStats, quest: renderQuest, inventory: renderInventory, store: renderStore, settings: renderSettings, more: renderMore };
 
 /* ================= Init ================= */
 buildTabs();

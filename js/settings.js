@@ -22,7 +22,7 @@ function renderSettings() {
       h('label', { class: 'field', style: 'margin-top:8px' }, 'Your name', nameInput),
       h('label', { class: 'field', style: 'margin-top:8px' }, 'Workout goal', weeklyGoalSelect(account.weeklyGoal, (n) => { account.weeklyGoal = n; persistAccount(); toast('Goal saved'); }))),
     h('div', { class: 'card char-row' },
-      h('div', { class: 'slot-icon' }, avatarSprite(profile.avatar, 'sprite sm')),
+      h('div', { class: 'slot-icon' }, characterSvg(profile, inventory, equipped, 'sprite sm')),
       h('div', { class: 'slot-info' },
         h('div', { class: 'slot-label', text: 'Playing as' }),
         h('div', { class: 'slot-name', text: profile.name }),

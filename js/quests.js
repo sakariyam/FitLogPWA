@@ -123,6 +123,7 @@ function activeQuest(path) {
 function renderQuest() {
   const panel = panelEl('quest');
   panel.replaceChildren();
+  panel.append(programCampaign());
   const keys = Object.keys(STATS);
   const segBtns = keys.map((k) => h('button', { type: 'button', class: 'seg-btn', 'aria-pressed': String(questView === k),
     onclick: () => { questView = k; renderQuest(); } }, STATS[k] + (quests[k] ? ' *' : '')));

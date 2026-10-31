@@ -5,8 +5,10 @@
 let characters = {};
 let activeId = null;
 let account = null;     // name, weeklyGoal, xp, onboarded, createdAt. One per install, shared by every character.
-let profile = null;     // the active CHARACTER: id, name, classId, avatar, xp, stats, cleared, gold, masteredAt
+let profile = null;     // the active CHARACTER: id, name, classId, xp, stats, cleared, gold, masteredAt
 let workouts = [];      // ACCOUNT-level workout log (every character logs into the same history)
+let customExercises = [];
+let programData = { custom: [], runs: [], activeRunId: null };
 let inventory = [];
 let equipped = emptyGear();
 let quests = emptyQuests();
@@ -21,9 +23,22 @@ function today() {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
-function blankDraft() { return { date: today(), name: '', exercises: [] }; }
+function blankDraft() { return { date: today(), name: '', exercises: [], startedAt: null, timerElapsedMs: 0, timerPaused: false }; }
+function syncWorkoutTimer() {
+  const active = draft.exercises.some((exercise) => exercise.name.trim());
+  const timerPaused = active && draft.timerPaused === true;
+  const timerElapsedMs = active && Number.isFinite(draft.timerElapsedMs) && draft.timerElapsedMs > 0 ? draft.timerElapsedMs : 0;
+  const startedAt = active && !timerPaused
+    ? (Number.isFinite(draft.startedAt) && draft.startedAt > 0 ? draft.startedAt : Date.now()) : null;
+  if (draft.startedAt === startedAt && draft.timerElapsedMs === timerElapsedMs && draft.timerPaused === timerPaused) return false;
+  Object.assign(draft, { startedAt, timerElapsedMs, timerPaused });
+  return true;
+}
+function workoutElapsedMs() {
+  return (draft.timerElapsedMs || 0) + (draft.startedAt ? Math.max(0, Date.now() - draft.startedAt) : 0);
+}
 const newSet = (prev) => ({ reps: prev ? prev.reps : '', kg: prev ? prev.kg : '' });
-const newExercise = () => ({ name: '', type: 'strength', typeSet: false, km: '', minutes: '', sets: [newSet()] });
+const newExercise = () => ({ name: '', type: 'strength', km: '', minutes: '', sets: [newSet()] });
 
 const classOf = () => CLASSES[profile.classId] || CLASSES[DEFAULT_CLASS];
 const levelOf = (xp) => Math.min(MAX_LEVEL, Math.floor(xp / XP_PER_LEVEL) + 1);
@@ -54,8 +69,28 @@ function gearBonus() {
 }
 const effStat = (k) => statInfo(profile.stats[k]).level + gearBonus()[k];
 
-function guessType(name) {
-  const n = name.trim().toLowerCase();
-  for (const w of workouts) for (const e of w.exercises) if (e.name.toLowerCase() === n && e.type) return e.type;
-  return AGILITY_RE.test(n) ? 'agility' : 'strength';
+function exerciseCatalog() {
+  return [
+    ...COMMON.map((name) => ({ name, type: EXERCISE_TYPES[name], ...EXERCISE_MUSCLES[name], ...EXERCISE_INFO[name] })),
+    ...customExercises.map((exercise) => ({ ...exercise, muscles: exercise.main.map((key) => MUSCLE_GROUPS[key]).join(', ') }))
+  ];
+}
+
+function exerciseDefinition(name) {
+  return exerciseCatalog().find((exercise) => exercise.name === name);
+}
+
+function trainedMuscles(exercises) {
+  const main = new Set();
+  const supporting = new Set();
+  exercises.forEach((exercise) => {
+    const definition = exerciseDefinition(exercise.name);
+    if (!definition) return;
+    definition.main.forEach((key) => main.add(key));
+    definition.supporting.forEach((key) => supporting.add(key));
+  });
+  return {
+    main: Object.keys(MUSCLE_GROUPS).filter((key) => main.has(key)),
+    supporting: Object.keys(MUSCLE_GROUPS).filter((key) => supporting.has(key) && !main.has(key))
+  };
 }
